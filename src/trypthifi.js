@@ -11,12 +11,23 @@ function headers() {
   return h;
 }
 
+function normalizeArtUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  if (trimmed.startsWith('/')) return `${config.trypthifi.baseUrl}${trimmed}`;
+  return trimmed;
+}
+
 function chooseAlbumArtUrl(album) {
   if (!album || typeof album !== 'object') return null;
 
   const candidates = [];
   const push = (value) => {
-    if (typeof value === 'string' && value.trim()) candidates.push(value.trim());
+    const normalized = normalizeArtUrl(value);
+    if (normalized) candidates.push(normalized);
   };
 
   push(album.cover_xl);

@@ -52,7 +52,10 @@ export async function execute(interaction) {
       .setFooter({ text: `Quality ${quality}` });
 
     if (track.album) embed.addFields({ name: 'Album', value: track.album, inline: true });
-    if (track.artUrl) embed.setImage(track.artUrl);
+    if (track.artUrl) {
+      embed.setImage(track.artUrl);
+      embed.setThumbnail(track.artUrl);
+    }
 
     const NITRO_LIMIT = 500 * 1024 * 1024;
     const { size } = await stat(file);
