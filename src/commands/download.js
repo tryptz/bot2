@@ -1,9 +1,9 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
 import { searchTracks, getStreamUrl, formatDuration } from '../trypthifi.js';
 import { config } from '../config.js';
 import { Readable } from 'node:stream';
 import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 
@@ -44,9 +44,17 @@ export async function execute(interaction) {
     const file = path.join(config.downloadDir, `${safeName(`${track.artist} - ${track.title}`)}.${ext}`);
     await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
 
-    return interaction.editReply(
-      `✅ Saved **${track.title}** — ${track.artist} \`${formatDuration(track.durationSec)}\`\n\`${file}\` on the bot machine.`
-    );
+    const summary = `✅ Saved **${track.title}** — ${track.artist} \`${formatDuration(track.durationSec)}\``;
+    // Discord upload limit: 500MB with Nitro, 25MB otherwise. Send the file if it fits.
+    const NITRO_LIMIT = 500 * 1024 * 1024;
+    const { size } = await stat(file);
+    if (size <= NITRO_LIMIT) {
+      return interaction.editReply({
+        content: summary,
+        files: [new AttachmentBuilder(file)],
+      });
+    }
+    return interaction.editReply(`${summary}\n⚠️ Too large to upload (${(size / 1048576).toFixed(1)} MB). Saved to \`${file}\` on the bot machine.`);
   } catch (err) {
     return interaction.editReply(`❌ ${err.message}`);
   }
