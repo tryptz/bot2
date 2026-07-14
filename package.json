@@ -1,0 +1,23 @@
+{
+  "name": "tryptify-bot",
+  "version": "0.1.0",
+  "description": "Discord music bot that searches, plays, and downloads via a self-hosted TrypT-hifi (Qobuz-DL) instance.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "author": "tryptz",
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/voice": "^0.18.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.15",
+    "opusscript": "^0.1.1"
+  }
+}

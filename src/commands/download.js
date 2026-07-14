@@ -1,0 +1,53 @@
+import { SlashCommandBuilder } from 'discord.js';
+import { searchTracks, getStreamUrl, formatDuration } from '../trypthifi.js';
+import { config } from '../config.js';
+import { Readable } from 'node:stream';
+import { createWriteStream } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
+import path from 'node:path';
+
+export const data = new SlashCommandBuilder()
+  .setName('download')
+  .setDescription('Download a track from TrypT-hifi to the bot machine.')
+  .addStringOption((o) =>
+    o.setName('query').setDescription('Song / artist to search for').setRequired(true))
+  .addStringOption((o) =>
+    o.setName('quality').setDescription('Audio quality').addChoices(
+      { name: 'Hi-Res 192kHz', value: '27' },
+      { name: 'Hi-Res 96kHz', value: '7' },
+      { name: 'CD Lossless', value: '6' },
+      { name: 'MP3 320', value: '5' },
+    ));
+
+// Strip characters Windows/most filesystems reject.
+function safeName(s) {
+  return s.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 150);
+}
+
+export async function execute(interaction) {
+  await interaction.deferReply();
+
+  const quality = interaction.options.getString('quality') || config.trypthifi.defaultQuality;
+  let track;
+  try {
+    const results = await searchTracks(interaction.options.getString('query'));
+    if (results.length === 0) return interaction.editReply('🔍 No matching tracks found.');
+    track = results[0];
+
+    const url = await getStreamUrl(track.id, quality);
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error(`Fetch failed (HTTP ${res.status}).`);
+
+    const ext = quality === '5' ? 'mp3' : 'flac';
+    await mkdir(config.downloadDir, { recursive: true });
+    const file = path.join(config.downloadDir, `${safeName(`${track.artist} - ${track.title}`)}.${ext}`);
+    await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
+
+    return interaction.editReply(
+      `✅ Saved **${track.title}** — ${track.artist} \`${formatDuration(track.durationSec)}\`\n\`${file}\` on the bot machine.`
+    );
+  } catch (err) {
+    return interaction.editReply(`❌ ${err.message}`);
+  }
+}
