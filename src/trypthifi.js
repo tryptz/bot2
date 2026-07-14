@@ -30,6 +30,22 @@ function chooseAlbumArtUrl(album) {
     if (normalized) candidates.push(normalized);
   };
 
+  // Nested image objects, largest first. Qobuz returns
+  //   image: { small, thumbnail, large, back }
+  // Other providers may use nested { url } / { xl }.
+  for (const key of ['image', 'cover', 'picture', 'artwork']) {
+    const obj = album?.[key];
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      push(obj.xl);
+      push(obj.large);
+      push(obj.url);
+      push(obj.medium);
+      push(obj.small);
+      push(obj.thumbnail);
+    }
+  }
+
+  // Flat string fields (Deezer-style shapes).
   push(album.cover_xl);
   push(album.cover_big);
   push(album.cover_medium);
@@ -48,10 +64,6 @@ function chooseAlbumArtUrl(album) {
       if (typeof item === 'string') push(item);
       else if (item?.url) push(item.url);
     }
-  }
-
-  for (const key of ['cover', 'image', 'picture']) {
-    if (album?.[key]?.url) push(album[key].url);
   }
 
   return candidates.length ? candidates[0] : null;
