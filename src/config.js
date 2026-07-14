@@ -28,8 +28,12 @@ export const config = {
 
   downloadDir: process.env.DOWNLOAD_DIR || 'downloads',
 
-  // Largest file the bot will try to upload to Discord before falling back to a
-  // direct download link. Discord's real limit depends on the server's boost
-  // tier (25 / 50 / 100 MB); an oversized upload is also caught at send time.
-  maxUploadBytes: Math.round(parseFloat(process.env.MAX_UPLOAD_MB || '100') * 1024 * 1024),
+  // Ceiling on what the bot will even attempt to upload before transcoding /
+  // linking. The real per-message cap is set by whoever ran the command (their
+  // Nitro) plus the server boost, so we attempt up to the Nitro max and catch a
+  // 413 at send time to trigger the fallback — rather than guessing the cap here.
+  maxUploadBytes: Math.round(parseFloat(process.env.MAX_UPLOAD_MB || '500') * 1024 * 1024),
+
+  // Bitrate (kbps) for the Opus fallback sent when the full file won't upload.
+  opusFallbackKbps: parseInt(process.env.OPUS_FALLBACK_KBPS || '256', 10),
 };
