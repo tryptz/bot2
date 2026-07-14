@@ -27,4 +27,9 @@ export const config = {
   },
 
   downloadDir: process.env.DOWNLOAD_DIR || 'downloads',
+
+  // Largest file the bot will try to upload to Discord before falling back to a
+  // direct download link. Discord's real limit depends on the server's boost
+  // tier (25 / 50 / 100 MB); an oversized upload is also caught at send time.
+  maxUploadBytes: Math.round(parseFloat(process.env.MAX_UPLOAD_MB || '100') * 1024 * 1024),
 };

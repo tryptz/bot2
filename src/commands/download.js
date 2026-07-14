@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { searchTracks, getStreamUrl, formatDuration } from '../trypthifi.js';
 import { config } from '../config.js';
 import { Readable } from 'node:stream';
@@ -23,6 +23,13 @@ export const data = new SlashCommandBuilder()
 // Strip characters Windows/most filesystems reject.
 function safeName(s) {
   return s.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 150);
+}
+
+// A bot's upload limit is set by the server's Boost tier (25/50/100 MB), not by
+// anyone's Nitro. When a file exceeds it, Discord rejects the request with
+// HTTP 413 / API error code 40005 ("Request entity too large").
+function isEntityTooLarge(err) {
+  return err?.status === 413 || err?.code === 40005 || /entity too large/i.test(err?.message ?? '');
 }
 
 export async function execute(interaction) {
@@ -51,25 +58,32 @@ export async function execute(interaction) {
       .setFooter({ text: `Quality ${quality}` });
 
     if (track.album) embed.addFields({ name: 'Album', value: track.album, inline: true });
-    // Album art: point the embed straight at the remote cover URL and let Discord
-    // fetch it. Downloading the cover and referencing it via attachment://<name>
-    // does NOT work here — Discord sanitizes attachment filenames that contain
-    // spaces/punctuation, so a name like "Joris Voorn - Tryptamine cover.jpg"
-    // never matches the stored file and the embed image renders blank.
+    // Album art: point the embed at the remote cover URL and let Discord fetch it.
+    // attachment:// breaks because Discord sanitizes filenames with spaces.
     if (track.artUrl) embed.setImage(track.artUrl);
 
-    const NITRO_LIMIT = 500 * 1024 * 1024;
     const { size } = await stat(file);
 
-    if (size <= NITRO_LIMIT) {
-      return interaction.editReply({ embeds: [embed], files: [new AttachmentBuilder(file)] });
+    // Attach the file directly when it's within the upload limit. The real cap is
+    // the server's Boost tier, so we also catch a 413 at send time and fall back
+    // to the download link below — no matter which server ran the command.
+    if (size <= config.maxUploadBytes) {
+      try {
+        return await interaction.editReply({ embeds: [embed], files: [new AttachmentBuilder(file)] });
+      } catch (err) {
+        if (!isEntityTooLarge(err)) throw err;
+      }
     }
 
-    // Too big to upload — keep the embed (the cover still loads from the URL) and
-    // tell the user where the file landed on the bot machine.
+    // Too large to upload here — hand back the signed download link instead
+    // (valid ~15 min), which works regardless of the server's upload limit.
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel('Download').setStyle(ButtonStyle.Link).setURL(url).setEmoji('⬇️'),
+    );
     return interaction.editReply({
-      content: `${summary}\n⚠️ Too large to upload (${(size / 1048576).toFixed(1)} MB). Saved to \`${file}\` on the bot machine.`,
+      content: `${summary}\n⚠️ ${(size / 1048576).toFixed(1)} MB is too large to upload here — download it directly (link valid ~15 min):`,
       embeds: [embed],
+      components: [row],
     });
   } catch (err) {
     return interaction.editReply(`❌ ${err.message}`);
