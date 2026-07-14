@@ -11,6 +11,41 @@ function headers() {
   return h;
 }
 
+function chooseAlbumArtUrl(album) {
+  if (!album || typeof album !== 'object') return null;
+
+  const candidates = [];
+  const push = (value) => {
+    if (typeof value === 'string' && value.trim()) candidates.push(value.trim());
+  };
+
+  push(album.cover_xl);
+  push(album.cover_big);
+  push(album.cover_medium);
+  push(album.cover_small);
+  push(album.cover);
+  push(album.image);
+  push(album.picture);
+  push(album.thumbnail);
+  push(album.artwork);
+  push(album.url);
+  push(album.coverUrl ?? album.cover_url);
+  push(album.imageUrl ?? album.image_url);
+
+  if (Array.isArray(album.images)) {
+    for (const item of album.images) {
+      if (typeof item === 'string') push(item);
+      else if (item?.url) push(item.url);
+    }
+  }
+
+  for (const key of ['cover', 'image', 'picture']) {
+    if (album?.[key]?.url) push(album[key].url);
+  }
+
+  return candidates.length ? candidates[0] : null;
+}
+
 // Search and return a normalized list of tracks. The raw Qobuz shape is
 // data.tracks.items[]; we defensively default in case a field is missing.
 export async function searchTracks(query, limit = 10) {
@@ -28,6 +63,7 @@ export async function searchTracks(query, limit = 10) {
     artist: t?.performer?.name ?? t?.album?.artist?.name ?? 'Unknown artist',
     album: t?.album?.title ?? '',
     durationSec: t.duration ?? 0,
+    artUrl: chooseAlbumArtUrl(t?.album ?? t),
   }));
 }
 
