@@ -25,6 +25,31 @@ function safeName(s) {
   return s.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 150);
 }
 
+function imageExtensionFromContentType(type) {
+  if (!type) return 'jpg';
+  const normalized = type.split(';')[0].trim().toLowerCase();
+  if (normalized.includes('png')) return 'png';
+  if (normalized.includes('webp')) return 'webp';
+  if (normalized.includes('gif')) return 'gif';
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg';
+  return 'jpg';
+}
+
+function extensionFromUrl(url) {
+  const parsed = path.extname(new URL(url).pathname).split('.').pop();
+  if (!parsed) return null;
+  const cleaned = parsed.toLowerCase();
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(cleaned)) return cleaned === 'jpeg' ? 'jpg' : cleaned;
+  return null;
+}
+
+async function downloadImage(url, dest) {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) return false;
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
+  return true;
+}
+
 export async function execute(interaction) {
   await interaction.deferReply();
 
@@ -44,6 +69,18 @@ export async function execute(interaction) {
     const file = path.join(config.downloadDir, `${safeName(`${track.artist} - ${track.title}`)}.${ext}`);
     await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
 
+    let artFilePath = null;
+    if (track.artUrl) {
+      const imageExt = extensionFromUrl(track.artUrl) || imageExtensionFromContentType(res.headers.get('content-type'));
+      artFilePath = path.join(config.downloadDir, `${safeName(`${track.artist} - ${track.title} cover`)}.${imageExt}`);
+      try {
+        const ok = await downloadImage(track.artUrl, artFilePath);
+        if (!ok) artFilePath = null;
+      } catch {
+        artFilePath = null;
+      }
+    }
+
     const summary = `✅ Saved **${track.title}** — ${track.artist} \`${formatDuration(track.durationSec)}\``;
     const embed = new EmbedBuilder()
       .setTitle(track.title)
@@ -52,20 +89,25 @@ export async function execute(interaction) {
       .setFooter({ text: `Quality ${quality}` });
 
     if (track.album) embed.addFields({ name: 'Album', value: track.album, inline: true });
-    if (track.artUrl) {
-      embed.setImage(track.artUrl);
-      embed.setThumbnail(track.artUrl);
+    if (artFilePath) {
+      embed.setImage(`attachment://${path.basename(artFilePath)}`);
+      embed.setThumbnail(`attachment://${path.basename(artFilePath)}`);
     }
 
     const NITRO_LIMIT = 500 * 1024 * 1024;
     const { size } = await stat(file);
-    const payload = { embeds: [embed] };
+    const files = [];
+    const audioAttachment = new AttachmentBuilder(file);
+    files.push(audioAttachment);
+    if (artFilePath) files.push(new AttachmentBuilder(artFilePath));
+
+    const payload = { embeds: [embed], files };
 
     if (size <= NITRO_LIMIT) {
-      payload.files = [new AttachmentBuilder(file)];
       return interaction.editReply(payload);
     }
 
+    payload.files = artFilePath ? [new AttachmentBuilder(artFilePath)] : [];
     payload.content = `${summary}\n⚠️ Too large to upload (${(size / 1048576).toFixed(1)} MB). Saved to \`${file}\` on the bot machine.`;
     return interaction.editReply(payload);
   } catch (err) {
